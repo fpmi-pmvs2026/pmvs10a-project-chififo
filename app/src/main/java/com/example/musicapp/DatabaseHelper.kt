@@ -28,4 +28,28 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "music_app.db
         db.insert("tracks", null, values)
         db.close()
     }
+
+    fun getAllTracks(): List<Pair<Int, String>> {
+        val list = mutableListOf<Pair<Int, String>>()
+        val db = this.readableDatabase
+        val cursor = db.rawQuery("SELECT id, artist, title FROM tracks", null)
+        if (cursor.moveToFirst()) {
+            do {
+                val id = cursor.getInt(0)
+                val artist = cursor.getString(1)
+                val title = cursor.getString(2)
+                list.add(Pair(id, "$artist — $title"))
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
+        db.close()
+        return list
+    }
+
+    // Удалить трек по ID
+    fun deleteTrack(id: Int) {
+        val db = this.writableDatabase
+        db.delete("tracks", "id=?", arrayOf(id.toString()))
+        db.close()
+    }
 }

@@ -126,5 +126,18 @@ fun MusicAppScreen() {
         ) {
             Text("Сохранить в БД")
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                val intent = android.content.Intent(context, SavedTracksActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+        ) {
+            Text("Моя сохраненная музыка")
+        }
     }
 }
