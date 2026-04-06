@@ -8,7 +8,6 @@ import android.content.ContentValues
 class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "music_app.db", null, 1) {
 
     override fun onCreate(db: SQLiteDatabase) {
-        // Создаем простую таблицу с треками
         val createTableQuery = "CREATE TABLE tracks (id INTEGER PRIMARY KEY AUTOINCREMENT, artist TEXT, title TEXT)"
         db.execSQL(createTableQuery)
     }
@@ -18,7 +17,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "music_app.db
         onCreate(db)
     }
 
-    // Простая функция для сохранения трека
     fun addTrack(artist: String, title: String) {
         val db = this.writableDatabase
         val values = ContentValues().apply {
@@ -46,7 +44,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "music_app.db
         return list
     }
 
-    // Удалить трек по ID
     fun deleteTrack(id: Int) {
         val db = this.writableDatabase
         db.delete("tracks", "id=?", arrayOf(id.toString()))
