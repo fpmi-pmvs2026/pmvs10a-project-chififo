@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class SearchLogicTest {
+class MusicRepositoryTest {
 
     private val repository = MusicRepository()
 
@@ -25,7 +25,7 @@ class SearchLogicTest {
     }
 
     @Test
-    fun formatTime_returnsZeroForZeroInput() {
+    fun formatTime_returnsZeroForEmptyTime() {
         assertEquals("00:00", formatTime(0))
     }
 

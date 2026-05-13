@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,14 +21,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.URL
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,12 +51,13 @@ fun MusicAppScreen() {
     var artist by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-
-    // Состояние для хранения списка результатов поиска
-    var searchResults by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var searchResults by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var selectedTrack by remember { mutableStateOf<Track?>(null) }
+    var lyrics by remember { mutableStateOf("") }
 
     val context = LocalContext.current
     val dbHelper = remember { DatabaseHelper(context) }
+    val repository = remember { MusicRepository() }
     val coroutineScope = rememberCoroutineScope()
 
     Column(
@@ -99,31 +101,21 @@ fun MusicAppScreen() {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             FilledTonalButton(
                 onClick = {
                     if (artist.isNotBlank()) {
                         isLoading = true
                         coroutineScope.launch(Dispatchers.IO) {
                             try {
-                                // Ищем до 10 треков
-                                val url = "https://itunes.apple.com/search?term=${artist.replace(" ", "+")}&entity=song&limit=10"
-                                val response = URL(url).readText()
-                                val json = JSONObject(response)
-                                val resultsArray = json.getJSONArray("results")
-                                val parsedList = mutableListOf<Pair<String, String>>()
-
-                                for (i in 0 until resultsArray.length()) {
-                                    val obj = resultsArray.getJSONObject(i)
-                                    val tName = obj.getString("trackName")
-                                    val aName = obj.getString("artistName")
-                                    parsedList.add(Pair(aName, tName))
-                                }
-
+                                val results = repository.searchTracks(artist)
                                 withContext(Dispatchers.Main) {
-                                    if (parsedList.isNotEmpty()) {
-                                        searchResults = parsedList // Показываем список
-                                    } else {
+                                    searchResults = results
+                                    selectedTrack = null
+                                    if (results.isEmpty()) {
                                         Toast.makeText(context, "Не найдено", Toast.LENGTH_SHORT).show()
                                     }
                                     isLoading = false
@@ -149,12 +141,24 @@ fun MusicAppScreen() {
 
             Button(
                 onClick = {
-                    if (artist.isNotBlank() && title.isNotBlank()) {
-                        dbHelper.addTrack(artist, title)
+                    val trackToSave = selectedTrack?.copy(
+                        artist = artist.ifBlank { selectedTrack?.artist ?: "" },
+                        title = title.ifBlank { selectedTrack?.title ?: "" },
+                        lyrics = lyrics.ifBlank { selectedTrack?.lyrics ?: "" }
+                    ) ?: Track(
+                        artist = artist,
+                        title = title,
+                        lyrics = lyrics
+                    )
+
+                    if (trackToSave.artist.isNotBlank() && trackToSave.title.isNotBlank()) {
+                        dbHelper.addTrack(trackToSave)
                         Toast.makeText(context, "Сохранено!", Toast.LENGTH_SHORT).show()
                         artist = ""
                         title = ""
-                        searchResults = emptyList() // Очищаем список результатов после сохранения
+                        lyrics = ""
+                        selectedTrack = null
+                        searchResults = emptyList()
                     } else {
                         Toast.makeText(context, "Заполните поля", Toast.LENGTH_SHORT).show()
                     }
@@ -168,34 +172,93 @@ fun MusicAppScreen() {
             }
         }
 
-        // БЛОК СО СПИСКОМ РЕЗУЛЬТАТОВ
         if (searchResults.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
+
             Text(
                 text = "Выберите трек:",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.align(Alignment.Start)
             )
+
             Spacer(modifier = Modifier.height(8.dp))
+
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(searchResults) { result ->
-                    Card(
+                    val isSelected = selectedTrack?.artist == result.artist &&
+                            selectedTrack?.title == result.title
+
+                    OutlinedCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                // При клике заполняем поля и прячем список
-                                artist = result.first
-                                title = result.second
-                                searchResults = emptyList()
+                                selectedTrack = result
+                                artist = result.artist
+                                title = result.title
+                                lyrics = "Загрузка текста..."
+
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    val fetchedLyrics = repository.fetchLyrics(result.artist, result.title)
+                                    withContext(Dispatchers.Main) {
+                                        lyrics = fetchedLyrics
+                                        selectedTrack = selectedTrack?.copy(lyrics = fetchedLyrics)
+                                    }
+                                }
                             },
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            }
+                        ),
+                        colors = CardDefaults.outlinedCardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(text = result.second, fontWeight = FontWeight.Bold)
-                            Text(text = result.first, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AsyncImage(
+                                model = result.artworkUrl,
+                                contentDescription = "Обложка",
+                                modifier = Modifier.size(64.dp),
+                                contentScale = ContentScale.Crop
+                            )
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = result.title,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    }
+                                )
+                                Text(
+                                    text = result.artist,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            if (isSelected) {
+                                Text(
+                                    text = "Выбрано",
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
                         }
                     }
                 }
@@ -208,7 +271,9 @@ fun MusicAppScreen() {
             onClick = {
                 context.startActivity(Intent(context, SavedTracksActivity::class.java))
             },
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp, top = 8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp, top = 8.dp)
         ) {
             Icon(Icons.Default.List, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
@@ -219,12 +284,23 @@ fun MusicAppScreen() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StyledTextField(value: String, onValueChange: (String) -> Unit, label: String, icon: ImageVector) {
+fun StyledTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    icon: ImageVector
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        leadingIcon = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        leadingIcon = {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         singleLine = true

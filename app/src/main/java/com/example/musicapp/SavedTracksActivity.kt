@@ -1,7 +1,5 @@
 package com.example.musicapp
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -14,15 +12,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 
 class SavedTracksActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,6 +45,7 @@ fun SavedTracksScreen() {
     val dbHelper = remember { DatabaseHelper(context) }
 
     var tracks by remember { mutableStateOf(dbHelper.getAllTracks()) }
+    var expandedTrackId by remember { mutableStateOf<Int?>(null) }
 
     Column(
         modifier = Modifier
@@ -62,75 +61,98 @@ fun SavedTracksScreen() {
                 modifier = Modifier.weight(1f)
             )
             FilledTonalIconButton(onClick = { tracks = dbHelper.getAllTracks() }) {
-                Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Обновить",
+                    tint = MaterialTheme.colorScheme.error
+                )
             }
         }
 
         Text(
-            text = "Нажми: найти в Google. Удерживай: удалить.",
+            text = "Нажми: раскрыть или скрыть. Удерживай: удалить.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
         if (tracks.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
                 Text("Тут пока пусто...", style = MaterialTheme.typography.bodyLarge)
             }
         } else {
             LazyColumn(
                 contentPadding = PaddingValues(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(tracks) { track ->
-                    val parts = track.second.split(" — ")
-                    val artistName = parts.getOrNull(0) ?: ""
-                    val trackName = parts.getOrNull(1) ?: track.second
-
                     ElevatedCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .combinedClickable(
                                 onClick = {
-                                    val searchQuery = Uri.encode("$artistName $trackName")
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$searchQuery"))
-                                    context.startActivity(intent)
+                                    expandedTrackId =
+                                        if (expandedTrackId == track.id) null else track.id
                                 },
                                 onLongClick = {
-                                    dbHelper.deleteTrack(track.first)
+                                    dbHelper.deleteTrack(track.id)
                                     tracks = dbHelper.getAllTracks()
                                     Toast.makeText(context, "Удалено", Toast.LENGTH_SHORT).show()
                                 }
                             ),
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
                     ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = trackName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = track.artworkUrl,
+                                    contentDescription = "Обложка трека",
+                                    modifier = Modifier.size(72.dp),
+                                    contentScale = ContentScale.Crop
                                 )
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = track.title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = track.artist,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            if (expandedTrackId == track.id) {
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                AudioPlayer(audioUrl = track.audioUrl)
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
                                 Text(
-                                    text = artistName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    text = "Текст песни",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = if (track.lyrics.isBlank()) "Текст не сохранён." else track.lyrics,
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
                             }
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp).padding(start = 8.dp)
-                            )
                         }
                     }
                 }

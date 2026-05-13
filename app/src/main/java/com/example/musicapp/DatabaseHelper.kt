@@ -1,14 +1,24 @@
 package com.example.musicapp
 
+import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import android.content.ContentValues
 
-class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "music_app.db", null, 1) {
+class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "music_app.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
-        val createTableQuery = "CREATE TABLE tracks (id INTEGER PRIMARY KEY AUTOINCREMENT, artist TEXT, title TEXT)"
+        val createTableQuery = """
+            CREATE TABLE tracks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                artist TEXT NOT NULL,
+                title TEXT NOT NULL,
+                artwork_url TEXT,
+                audio_url TEXT,
+                lyrics TEXT
+            )
+        """.trimIndent()
+
         db.execSQL(createTableQuery)
     }
 
@@ -17,35 +27,49 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "music_app.db
         onCreate(db)
     }
 
-    fun addTrack(artist: String, title: String) {
-        val db = this.writableDatabase
+    fun addTrack(track: Track) {
+        val db = writableDatabase
         val values = ContentValues().apply {
-            put("artist", artist)
-            put("title", title)
+            put("artist", track.artist)
+            put("title", track.title)
+            put("artwork_url", track.artworkUrl)
+            put("audio_url", track.audioUrl)
+            put("lyrics", track.lyrics)
         }
         db.insert("tracks", null, values)
         db.close()
     }
 
-    fun getAllTracks(): List<Pair<Int, String>> {
-        val list = mutableListOf<Pair<Int, String>>()
-        val db = this.readableDatabase
-        val cursor = db.rawQuery("SELECT id, artist, title FROM tracks", null)
+    fun getAllTracks(): List<Track> {
+        val list = mutableListOf<Track>()
+        val db = readableDatabase
+        val cursor = db.rawQuery(
+            "SELECT id, artist, title, artwork_url, audio_url, lyrics FROM tracks ORDER BY id DESC",
+            null
+        )
+
         if (cursor.moveToFirst()) {
             do {
-                val id = cursor.getInt(0)
-                val artist = cursor.getString(1)
-                val title = cursor.getString(2)
-                list.add(Pair(id, "$artist — $title"))
+                list.add(
+                    Track(
+                        id = cursor.getInt(0),
+                        artist = cursor.getString(1),
+                        title = cursor.getString(2),
+                        artworkUrl = cursor.getString(3) ?: "",
+                        audioUrl = cursor.getString(4) ?: "",
+                        lyrics = cursor.getString(5) ?: ""
+                    )
+                )
             } while (cursor.moveToNext())
         }
+
         cursor.close()
         db.close()
         return list
     }
 
     fun deleteTrack(id: Int) {
-        val db = this.writableDatabase
+        val db = writableDatabase
         db.delete("tracks", "id=?", arrayOf(id.toString()))
         db.close()
     }
